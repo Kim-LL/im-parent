@@ -1,0 +1,78 @@
+syntax = "proto3";
+option java_package = "com.paas.im.model.proto";
+
+// 生成的Java类名（与原文件RpcBuf对应）
+option java_outer_classname = "RPCBuf";
+// 生成多个Java文件（可选，根据原生成逻辑保留）
+option java_multiple_files = false;
+
+/**
+ * 报文消息类型Type
+ */
+enum RPCTypeEnum {
+  /** 0 */
+  ZERO = 0;
+  /** 同步im ip */
+  SYNC_ROOM = 100;
+  /** 拉取直播间消息 */
+  PULL_MSG = 101;
+}
+
+/**
+ * 消息二级分类SubType
+ */
+enum RPCSubTypeEnum {
+  /** 0 */
+  ZERO1 = 0;
+  /** 添加 */
+  SYNC_ROOM_ADD = 100;
+  /** 删除 */
+  SYNC_ROOM_DEL = 101;
+  /** 获取rooms */
+  SYNC_ROOM_GET = 102;
+  /** 批量插入 */
+  SYNC_ROOM_BATCH_ADD = 103;
+  /** 禁言 */
+  GAG_ADD = 110;
+  /** 解除禁言 */
+  GAG_DEL = 111;
+  /** 主播黑名单全量同步 */
+  BLACK_ALL = 120;
+  /** 添加黑名单 */
+  BLACK_ADD = 121;
+  /** 删除黑名单 */
+  BLACK_DEL = 122;
+  /** 直播间消息同步 */
+  PULL_MSG_SYNC = 123;
+  /** 删除ROOM缓存中直播间历史消息 */
+  PULL_MSG_DEL = 124;
+}
+
+/**
+ * RPC连接登录
+ */
+message RPC {
+  /** rpc服务 */
+  optional string RPC_server = 1;
+  /** rpc端口 */
+  optional int32 RPC_port = 2;
+  /** 连接ID */
+  optional string channel_id = 3;
+  /** 序号 */
+  optional int32 index = 4;
+  /** 时间 */
+  optional string time = 5;
+}
+
+/**
+ * 同步直播所在IM IP
+ */
+message SyncRoom {
+  /** 直播间id */
+  optional string room_id = 1;
+  /** 所在imIp */
+  optional string im_ip = 2;
+  /** room server */
+  optional string room_ip = 3;
+}
+

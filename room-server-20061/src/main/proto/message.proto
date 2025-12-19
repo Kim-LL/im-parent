@@ -1,0 +1,315 @@
+syntax = "proto3";
+option java_package = "com.paas.im.model.proto";
+
+import "google/protobuf/any.proto";
+
+
+//                     Protocol
+// __ __ __ __ __ __ __ __ __ ____ __ __ __ __ __ __ ____ __ __ _____ __ __ ____ __ __ __ __ __ __ __ __
+//|              |              |           |           |           |           |                         |
+//        1              4            1           1           1           4             Uncertainty
+//|__ __ __ __ __|__ __ __ __ __|__ __ __ __|__ __ __ __|__ __ __ __|__ __ __ __|_ __ __ __ __ __ __ __ __|
+//|              |              |           |           |           |           |                         |
+//  HeaderLength    BodyLength       Cmd       SubType     DiyType      DataId          BodyContent
+//|__ __ __ __ __|__ __ __ __ __|__ __ __ __|__ __ __ __|__ __ __ __|__ __ __ __|__ __ __ ____ __ __ __ __|
+//
+//协议头12个字节定长
+//    HeaderLength//byte  :包头长，
+//    BodyLength  //int   :包体长，
+//    Cmd         //byte  :同消息type类型
+//    SubType     //byte  :同消息subType类型
+//    DiyType     //byte  :直播间自定义消息类型对应数字，如:App:@TXT=1
+//    DataId      //int   :单聊/群聊传cMsgId，直播间为roomId的HashCode
+//    Body 	   //byte[]:协议内容
+//    注：心跳需特殊处理，只传输1个字节的空包，值为-99，无需包头和包体
+option java_outer_classname = "MessageBuf";
+
+message User {
+  string user_id    = 1; //用户id
+  string token      = 2; //token
+  string app_id     = 3; //对应id wechat
+  int32 login_type  = 4; //登录方式 见枚举 LOGIN_TYPE
+  int32 device_type = 5; //设备类型 见枚举：DEVICE_TYPE
+  string device_id  = 6; //设备id
+  int64 sequence    = 7; //本地消息最新的 sequence 如没有就是 0
+  int64 msg_id      = 8; //客户端唯一消息id
+  string version    = 9; //客户端（SDK）版本号
+  string country    = 10; //用户终身国家码
+}
+
+//登录方式
+enum LoginTypeEnum {
+  LOGIN_MANUAL  = 0; //手动
+  LOGIN_AUTO    = 1; //自动
+}
+
+//设备类型
+enum DeviceTypeEnum {
+  PC       = 0;     //PC客户端
+  WEB      = 1;     //WEB端
+  ANDROID  = 2;     //Android
+  IOS      = 3;     //iOS
+  IPAD     = 4;     //iPAD
+}
+
+//消息列表
+message MessageList{
+  string to                = 1;   //接收者
+  string deviceId          = 2;   //设备id
+  repeated IMMessage msg     = 3;   //消息List
+}
+
+//消息实体
+message IMMessage {
+  string app_id         = 1; //应用ID
+  string from           = 2; //发送者
+  string to             = 3; //接受者
+  string device_id      = 4; //设备id
+  int32 type        = 5; //类型，同包头type，见枚举: TypeEnum
+  int32 sub_type        = 6; //二级类型 见枚举：SubTypeEnum
+  string title          = 7; //消息标题
+  int64 msg_id          = 8; //消息id
+  int64 sequence        = 9; //消息Sequence,内容为server时间戳
+  string flag           = 10; //会话是否有@我的标识符
+  string content        = 11; //消息内容
+  int64 client_time     = 12; //客户端时间
+  int64 server_time     = 13; //服务端时间
+  int64 client_msg_id   = 14; //客户端唯一消息id
+  int32 biz_status      = 15; //业务状态
+  int32 device_type     = 16; //设备类型
+  int32 msg_unread_num  = 17; //消息的未读人数：消息已读/未读情况。会话消息未读数由端上计算
+  string cus_msg_type   = 18; //1，直播自定义消息类型存：APP:String  2,多端推送存:to   3，群组消息存：groupId   4，退出直播间：为空表普通用户， 1：主播退出  5,禁言：为空禁言，1：解禁
+
+  string request_id     = 25; //请求标识ID,采用UUID
+  int32 priority        = 26; //消息优先级  直播间根据消息优先级丢弃消息 0 1 2 3
+
+  bool save_DB          = 27; //是否存储db,false:不存, true:存
+  bool is_system_msg    = 28; //是否是系统消息
+}
+
+//报文消息类型 TypeEnum
+enum TypeEnum {
+  LOGIN       = 0; //登录
+  LOGOUT      = 1; //退出
+  ACK         = 2; //回执
+
+  CHAT              = 10; //私聊
+  CHAT_GROUP        = 11; //群聊
+  PUSH              = 12; //推送
+  GROUP_MANAGE      = 13; //群管理
+  GROUP_MANAGE_LIST = 14; //群管理 list
+  IM_GROUP_CHAT     = 15; //IM管理群聊
+  LOGIN_TOB         = 16; //tob登陆功能
+
+  ROOM        = 20; //房聊
+  ROOM_BATCH  = 21; //直播间下行消息批量发送
+
+
+  EVENT       = 30; //事件 使用功能：用户禁言
+  OFFICIAL    = 31; //官方通知
+
+  SYSTEM        = 40; //系统消息
+  SYSTEM_BATCH  = 41; //批量系统消息
+
+  LIST        = 50; //repeated重复消息, 即消息List。List消息需设置本属性，对应 body见MessageList对象，反之，body为普通消息Message对象
+
+  GATEWAY     = 60; //gateway业务消息
+
+  CLOSE               = -1; //当前服务器链接数量超过限制 强制断开链接
+  LIMIT_QPS_CLOSE     = -2; //limit限流
+  APP_CLOSE           = -3; //当前APP总链接数量超过限制 强制断开链接
+  APP_STATICS         = -4; //app 链接数量统计
+  IM_USER_BLOCK       = -9; //IM直播间封锁
+
+  KEEPALIVE   = -99; //心跳
+
+  PULL        = -100; //拉去消息通知，服务器广播，通知客户端批量拉取
+}
+
+//消息二级分类
+enum SubTypeEnum {
+  TEXT      = 0; //文本
+  IMAGE     = 1; //图片
+  AUDIO     = 2; //语音
+  VIDEO     = 3; //视频
+
+  //群聊事件消息
+  GROUP_CREATE           = 10; //创建群组
+  GROUP_JOIN             = 11; //加入群组
+  GROUP_EXIT             = 12; //成员退出
+  GROUP_INFO             = 13; //获取群组信息
+  GROUP_UPDATE_INFO      = 14; //修改群组信息
+  GROUP_ADMIN            = 15; //修改群管理员
+  GROUP_USER             = 16; //获取群组中用户列表
+  GROUP_USERS_GROUP      = 17; //获取用户的群列表
+
+  GROUP_DISSOLVE        = 20; //解散
+  PULL_HISTORY_MSG      = 21; //单聊相关
+  GROUP_CHAT            = 22; //群聊
+  GROUP_ATTACH_UPDATE   = 23; //修改群备注信息
+
+
+  //事件消息
+  EVENT_GROUP_INFO            = 30; //群信息变更
+  EVENT_GROUP_MEM             = 31; //群成员变更
+  EVENT_GROUP_DISMISS         = 32; //群删除操作
+  EVENT_CANCEL_MSG            = 33; //扯回一条消息
+  EVENT_UPDATE_PUSH_TOKEN     = 34; //更新 push token
+  EVENT_ROOM_GAG_ADD_MSG      = 35; //直播间禁言相关事件消息
+  EVENT_ROOM_GAG_DEL_MSG      = 36; //直播间解禁/全员解禁消息
+  EVENT_ROOM_GET_GAG_LIST     = 37; //查询直播间禁言列表
+  EVENT_ROOM_GET_GAG_STATUS   = 38; //查询直播间单个用户/全员的禁言状态
+  EVENT_ROOM_BLACK_NOTIFY     = 39; //直播间拉黑/解除拉黑通知
+
+  //即时事件
+  EVENT_TYPE_CHAT         = 40; //私聊信息已读
+  EVENT_TYPE_GROUP        = 41; //群聊消息已读
+  EVENT_TYPE_SESSION_TOP  = 42; //绘画置顶事件
+
+  CHAT_MESSAGE_LIST       = 51; //处理 messageList 的 subtype
+  ROOM_MESSAGE_LIST       = 52; //处理 room 的 messageList 消息
+
+
+  //直播间消息
+  ROOM_CREATE   = 60; //直播间创建
+  ROOM_LOGIN    = 61; //加入
+  ROOM_LOGOUT   = 62; //退出
+  ROOM_KICK     = 63; //踢人
+  ROOM_GAG      = 64; //禁言
+  ROOM_SYSTEM   = 65; //系统消息
+  ROOM_NOTICE   = 66; //直播间通知
+  ROOM_AT       = 67; //@TA
+  ROOM_BLOCK    = 68; //黑名单
+  ROOM_CLOSE    = 69; //直播间结束
+
+  ROOM_PULL                 = 70; //拉取消息
+  ROOM_SERVER_REMOVE        = 71; //服务端清理
+  ROOM_DATA_ADD             = 72; //直播间数据添加
+  ROOM_DATA_UPDATE          = 73; //直播间数据修改
+  ROOM_DATA_REMOVE          = 74; //直播间数据删除
+  ROOM_DATA_QUERY           = 75; //查询直播间某一个数据
+  ROOM_DATA_QUERY_ALL       = 76; //查询直播间所有数据
+  ROOM_USER_DATA_ADD        = 77; //直播间用户数据添加
+  ROOM_USER_DATA_UPDATE     = 78; //直播间用户数据修改
+  ROOM_USER_DATA_REMOVE     = 79; //直播间用户数据删除
+  ROOM_USER_DATA_QUERY      = 80; //查询直播间用户某一个数据
+  ROOM_USER_DATA_QUERY_ALL  = 81; //查询直播间用户所有数据
+  ROOM_DIY                  = 82; //body自定义JSON  级别一级，必达消息
+
+
+  //PUSH推送消息
+  PUSH_OFFICIAL         = 90; //官方通知
+  PUSH_ACTIVITY         = 91; //运营活动
+
+  //SYSTEM消息
+  PULL_LOG              = 100; //拉取用户消息LOG
+  //系统调试消息
+  SYS_DEBUG             = 101;
+  PULL_LOG_CLIENT       = 102; //LOG日志
+
+  CHAT_UNREAD_MESSAGE = 110; //私信相关逻辑
+
+  IM_BLOCK    = -9; //IM直播间封锁
+}
+
+
+message GroupMessage {
+
+  optional string g_name    = 1;
+  optional string uid       = 2;
+  optional string nickname  = 3;
+  optional int32 role       = 4;
+  optional string gid       = 5;
+  optional string admin     = 6;
+  optional string topic     = 7;
+}
+
+//回执对象
+//1，登录成功                     @return UserAck
+//2，退出成功                     @return UserAck
+//3，消息上行成功              @return MessageAck List
+//4，消息下行成功              @return MessageAck List
+//5，直播间创建/登录成功 @return MessageAck List
+message Ack {
+  string to         = 1; //接受者
+  string device_id  = 2; //设备id
+  int32 type        = 3; //回执类型   见枚举:AckTypeEnum
+  int32 state_code  = 4; //回执状态码  见枚举：AckCodeEnum 正确为：0，其它均为错误码，需输出
+  
+  // 登录回执对象
+  UserAck user_ack  = 5;
+
+  // 消息回执对象
+  repeated MessageAck message_ack     = 6; //消息回执对象
+
+  repeated RoomMsgAck room_msg_ack    = 7; //直播间消息回执对象
+
+  optional string app_id              = 8; //应用的标识
+
+  optional GroupMessage group_info    = 9; //群基本信息
+
+  repeated GroupMessage group_users   = 10; //群中的用户列表
+
+  repeated GroupMessage user_groups   = 11; //用户所在的群列表
+
+  optional int64 msg_id               = 12; //服务端唯一消息id
+
+  optional int64 client_msg_id        = 14; //客户端唯一消息id
+
+  optional int32 user_groups_total    = 15; //用户所拥有的群总数
+
+  repeated google.protobuf.Any data   = 16; //返回数据列表
+}
+
+//回执类型
+enum AckTypeEnum {
+  CONNECT_ACK     = 0;    //连接
+  LOGIN_ACK       = 1;    //登录
+  LOGOUT_ACK      = 2;    //退出
+  SEND_MSG_ACK    = 3;    //消息上行成功
+  INCEPT_MSG_ACK  = 4;    //消息下行成功
+
+  ROOM_CREATE_ACK = 5;    //直播间创建
+  ROOM_LOGIN_ACK  = 6;    //直播间登录
+  ROOM_LOGOUT_ACK = 7;    //直播间退出
+  ROOM_KICK_ACK   = 8;    //直播间踢人
+  ROOM_GAG_ACK    = 9;    //直播间禁言
+}
+
+//登录回执
+message UserAck {
+  string user_id        = 1; //用户id
+  string device_id      = 2; //设备id
+  string session_key    = 3; //当前channel加密 key
+  int64 server_time     = 4; //服务器端时间
+  int64 client_msg_id   = 5; //客户端唯一消息id
+  int32 refresh_config  = 6; //0:不生效 1:下次重新请求服务器配置 2:断开连接,立即拉取服务器配置
+  int64 unread_msg_size = 7; //未读私信消息数量
+}
+
+//消息类型回执内容
+message MessageAck {
+  int64 msg_id        = 1; //消息id
+  int32 type          = 2; //消息类型，见枚举： TypeEnum
+  int64 client_msg_id = 3; //客户端临时ID
+  int64 server_time   = 4; //服务器端时间
+  int64 sequence      = 5; //消息sequence
+}
+
+//直播间白名单消息回执内容
+message RoomMsgAck {
+  int64 msg_id        = 1; //消息id
+  int32 type          = 2; //消息类型，见枚举： TypeEnum
+  int64 sub_type      = 3; //客户端临时ID
+  int32 diy_type      = 4; //直播间消息类型
+  int64 from          = 5; //消息发送者
+  int64 room_id       = 6; //直播间ID
+  int64 sequence      = 7; //消息 sequence
+  int64 client_msg_id = 8; //客户端唯一消息id
+}
+
+//回执状态码
+enum AckCodeEnum {
+  ACK_SUCCESS   = 0; //成功
+  TOKEN_EXPIRE  = 1; // Token过期
+}
