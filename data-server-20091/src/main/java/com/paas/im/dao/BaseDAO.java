@@ -1,9 +1,7 @@
 package com.paas.im.dao;
 
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
-import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.UpdateOptions;
@@ -21,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class BaseDAO {
 
-    private DBPool dbPool;
+    private final DBPool dbPool;
 
     public interface Callback<M, N> {
 
