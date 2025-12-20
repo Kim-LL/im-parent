@@ -6,17 +6,31 @@ import com.paas.im.enums.EnvEnum;
 import com.paas.im.model.pojo.KafkaConfig;
 import com.paas.im.model.pojo.KafkaTransportObject;
 import com.paas.im.tool.zookeeper.ZKConfigManager;
+import com.paas.im.utils.PathMatcherUtils;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.server.RequestPath;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.server.WebFilter;
+import org.springframework.web.server.WebFilterChain;
+import reactor.core.publisher.Mono;
 import tools.jackson.databind.deser.jdk.StringDeserializer;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
@@ -24,9 +38,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
 @Slf4j
+@Order(Ordered.HIGHEST_PRECEDENCE) // 优先级最高（数值越小，执行越早）
 @Configuration
 @EnableAsync
-public class ServerConfig {
+public class ServerConfig implements WebFilter{
+
+    @Value(value = "#{'${web.filter.include-paths:/api/**,/user/*}'.split(',')}")
+    private List<String> includePaths;
+
+    @Value(value = "#{'${web.filter.exclude-paths:**/login,**/register}'.split(',')}")
+    private List<String> excludePaths;
 
     @Bean
     public ExecutorService executorService(){
@@ -77,6 +98,33 @@ public class ServerConfig {
         );
         consumer.subscribe(topicList);
         return consumer;
+    }
+
+    @Override
+    public Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
+        // 2. 记录请求开始时间
+        LocalDateTime startTime = LocalDateTime.now();
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpResponse response = exchange.getResponse();
+        RequestPath path = request.getPath();
+        String name = request.getMethod().name();
+        String hostAddress = request.getRemoteAddress().getAddress().getHostAddress();
+        log.info("path: {}, name: {}, hostAddress: {}", path, name, hostAddress);
+        log.info("includePaths: {}", includePaths);
+        log.info("excludePaths: {}", excludePaths);
+        log.info("includePaths match: {}", PathMatcherUtils.match(path.toString(), includePaths));
+        log.info("excludePaths match: {}", PathMatcherUtils.match(path.toString(), excludePaths));
+        return chain.filter(exchange)
+                .doAfterTerminate(()->{
+                    LocalDateTime endTime = LocalDateTime.now();
+                    long duration = Duration.between(startTime, endTime).toMillis();
+                    log.info("【请求结束】路径：{}，响应状态码：{}，耗时：{}ms", path, response.getStatusCode(), duration);
+                }).onErrorResume(e -> {
+                    LocalDateTime endTime = LocalDateTime.now();
+                    long duration = Duration.between(startTime, endTime).toMillis();
+                    log.error("【请求异常】路径：{}，异常：{}，耗时：{}ms", path, e.getMessage(), duration, e);
+                    return Mono.error(e);
+                });
     }
 
 }
