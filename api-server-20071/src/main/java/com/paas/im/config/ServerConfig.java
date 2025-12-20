@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.server.RequestPath;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -38,15 +37,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
 @Slf4j
-@Order(Ordered.HIGHEST_PRECEDENCE) // 优先级最高（数值越小，执行越早）
+@Order(Ordered.HIGHEST_PRECEDENCE) // 拦截器，优先级最高（数值越小，执行越早）
 @Configuration
 @EnableAsync
 public class ServerConfig implements WebFilter{
 
-    @Value(value = "#{'${web.filter.include-paths:/api/**,/user/*}'.split(',')}")
+    @Value(value = "#{'${web.filter.include-paths:/api/**,/user/**}'.split(',')}")
     private List<String> includePaths;
 
-    @Value(value = "#{'${web.filter.exclude-paths:**/login,**/register}'.split(',')}")
+    @Value(value = "#{'${web.filter.exclude-paths:/**/login,/**/register}'.split(',')}")
     private List<String> excludePaths;
 
     @Bean
@@ -100,31 +99,49 @@ public class ServerConfig implements WebFilter{
         return consumer;
     }
 
+    /**
+     * 拦截器
+     */
     @Override
-    public Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
+    public @NonNull Mono<@NonNull Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         // 2. 记录请求开始时间
         LocalDateTime startTime = LocalDateTime.now();
         ServerHttpRequest request = exchange.getRequest();
         ServerHttpResponse response = exchange.getResponse();
-        RequestPath path = request.getPath();
-        String name = request.getMethod().name();
-        String hostAddress = request.getRemoteAddress().getAddress().getHostAddress();
-        log.info("path: {}, name: {}, hostAddress: {}", path, name, hostAddress);
-        log.info("includePaths: {}", includePaths);
-        log.info("excludePaths: {}", excludePaths);
-        log.info("includePaths match: {}", PathMatcherUtils.match(path.toString(), includePaths));
-        log.info("excludePaths match: {}", PathMatcherUtils.match(path.toString(), excludePaths));
+        String path = request.getPath().toString();
+
+        // 放行请求，放行列表 excludePaths
+        if(PathMatcherUtils.match(path, excludePaths)){
+            return chain.filter(exchange)
+                    .doAfterTerminate(()-> logEnd(path, response, startTime))
+                    .onErrorResume(e -> handleError(path, e, startTime));
+        }
+
+        // 非拦截请求
+        if(!PathMatcherUtils.match(path, includePaths)){
+            return chain.filter(exchange)
+                    .doAfterTerminate(()-> logEnd(path, response, startTime))
+                    .onErrorResume(e -> handleError(path, e, startTime));
+        }
+
+        // 剩下都是拦截请求，需要自定义拦截逻辑
         return chain.filter(exchange)
-                .doAfterTerminate(()->{
-                    LocalDateTime endTime = LocalDateTime.now();
-                    long duration = Duration.between(startTime, endTime).toMillis();
-                    log.info("【请求结束】路径：{}，响应状态码：{}，耗时：{}ms", path, response.getStatusCode(), duration);
-                }).onErrorResume(e -> {
-                    LocalDateTime endTime = LocalDateTime.now();
-                    long duration = Duration.between(startTime, endTime).toMillis();
-                    log.error("【请求异常】路径：{}，异常：{}，耗时：{}ms", path, e.getMessage(), duration, e);
-                    return Mono.error(e);
-                });
+                .doAfterTerminate(() -> logEnd(path, response, startTime))
+                .onErrorResume(e -> handleError(path, e, startTime));
+    }
+
+    // 提取重复的日志逻辑，简化代码
+    private void logEnd(String path, ServerHttpResponse response, LocalDateTime startTime) {
+        LocalDateTime endTime = LocalDateTime.now();
+        long duration = Duration.between(startTime, endTime).toMillis();
+        log.info("【请求结束】路径：{}，响应状态码：{}，耗时：{}ms", path, response.getStatusCode(), duration);
+    }
+
+    private @NonNull Mono<@NonNull Void> handleError(String path, Throwable e, LocalDateTime startTime) {
+        LocalDateTime endTime = LocalDateTime.now();
+        long duration = Duration.between(startTime, endTime).toMillis();
+        log.error("【请求异常】路径：{}，异常：{}，耗时：{}ms", path, e.getMessage(), duration, e);
+        return Mono.error(e);
     }
 
 }
